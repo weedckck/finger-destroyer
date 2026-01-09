@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>당신의 검지를 부.숴. 드립니다.</title>
+  <style>
+    body{margin:0;display:flex;justify-content:center;align-items:center;height:100vh;background:linear-gradient(135deg,#111,#222);font-family:'Pretendard',system-ui,sans-serif;color:#fff;overflow:hidden}
+    .game{width:360px;padding:20px;border-radius:20px;background:#1c1c1c;box-shadow:0 20px 40px rgba(0,0,0,.4);text-align:center;position:relative}
+    h1{margin:0 0 10px;font-size:22px;line-height:1.25}
+    .hud{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:14px}
+    .score{font-size:18px;margin-bottom:6px}
+    .btn{width:100%;height:120px;border-radius:16px;border:none;font-size:22px;cursor:pointer;background:linear-gradient(135deg,#ff4d4d,#ff884d);color:#fff;box-shadow:0 10px 20px rgba(0,0,0,.4);margin-bottom:10px}
+    .reroll{height:48px;font-size:16px;background:linear-gradient(135deg,#4d7cff,#4dd2ff)}
+    .btn:active{transform:scale(.97)}
+    .hp{margin-top:4px;font-size:16px;letter-spacing:2px}
+    .shake{animation:shake .3s}
+    @keyframes shake{0%{transform:translate(0,0)}20%{transform:translate(-6px,0)}40%{transform:translate(6px,0)}60%{transform:translate(-6px,0)}80%{transform:translate(6px,0)}100%{transform:translate(0,0)}}
+    .ssr-glow{animation:glow .8s ease-in-out 2}
+    @keyframes glow{0%{box-shadow:none}50%{box-shadow:0 0 40px 10px rgba(255,215,0,.8)}100%{box-shadow:none}}
+    .ssr-banner{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-size:36px;font-weight:800;letter-spacing:2px;color:#ffd700;text-shadow:0 0 20px rgba(255,215,0,.9);opacity:0;animation:banner .9s ease-in-out}
+    @keyframes banner{0%{opacity:0;transform:scale(.8)}40%{opacity:1;transform:scale(1.05)}100%{opacity:0;transform:scale(1)}}
+    .ending{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:10}
+    .ending.show{display:flex}
+    .ending-card{width:320px;padding:20px;border-radius:16px;text-align:center;background:#111;box-shadow:0 20px 40px rgba(0,0,0,.6)}
+    .ending-title{font-size:22px;margin-bottom:8px}
+    .ending-desc{font-size:14px;opacity:.9;margin-bottom:10px}
+    .ending-score{font-size:18px;margin-bottom:10px}
+    .ending-collection{font-size:12px;opacity:.8;margin-bottom:12px}
+    .ending-btn{height:44px;font-size:16px}
+  </style>
+</head>
+<body>
+  <div class="game" id="game">
+    <h1>당신의 검지를<br/>부.숴. 드립니다.</h1>
+
+    <div class="hud">
+      <div>⏱ <span id="time">30</span>s</div>
+      <div>🎯 <span id="score">0</span></div>
+    </div>
+
+    <button class="btn" id="clickBtn">눌러!!!</button>
+    <button class="btn reroll" id="rerollBtn">🎰 배율 리롤 (🩸 -1)</button>
+
+    <div id="gacha"></div>
+    <div class="hp" id="hp"></div>
+  </div>
+
+  <div class="ending" id="ending">
+    <div class="ending-card">
+      <div class="ending-title" id="endingTitle"></div>
+      <div class="ending-desc" id="endingDesc"></div>
+      <div class="ending-score">🎯 최종 점수: <span id="endingScore"></span></div>
+      <div class="ending-collection" id="endingCollection"></div>
+      <button class="btn ending-btn" id="endingBtn">다시 도전 ㄱㄱ</button>
+    </div>
+  </div>
+
+  <script>
+    let score=0,multiplier=1,playing=false,timerId=null;
+    const MAX_TIME=30, MAX_HP=5;
+    let time=MAX_TIME, hp=MAX_HP;
+    let ssrCount=0, rerollCount=0;
+
+    const endings=[50,100,150,200,250,300];
+
+    const scoreEl=document.getElementById('score');
+    const timeEl=document.getElementById('time');
+    const btn=document.getElementById('clickBtn');
+    const rerollBtn=document.getElementById('rerollBtn');
+    const gachaText=document.getElementById('gacha');
+    const gameEl=document.getElementById('game');
+    const hpEl=document.getElementById('hp');
+    const endingEl=document.getElementById('ending');
+    const endingTitle=document.getElementById('endingTitle');
+    const endingDesc=document.getElementById('endingDesc');
+    const endingScore=document.getElementById('endingScore');
+    const endingCollection=document.getElementById('endingCollection');
+    const endingBtn=document.getElementById('endingBtn');
+
+    function renderHP(){ hpEl.textContent='🩸 '.repeat(Math.max(hp,0)); }
+
+    btn.addEventListener('click',()=>{
+      if(!playing && time===MAX_TIME){ startGame(); return; }
+      if(!playing) return;
+      score+=multiplier; scoreEl.textContent=score;
+    });
+
+    rerollBtn.addEventListener('click',()=>{
+      if(!playing || hp<=0) return;
+      hp--; rerollCount++; renderHP(); rollGacha(true);
+      if(hp<=0) endGame();
+    });
+
+    endingBtn.addEventListener('click',()=>{ endingEl.classList.remove('show'); resetForRetry(); });
+
+    function startGame(){
+      if(timerId) clearInterval(timerId);
+      score=0; multiplier=1; time=MAX_TIME; hp=MAX_HP; ssrCount=0; rerollCount=0;
+      playing=true; scoreEl.textContent=score; timeEl.textContent=time; gachaText.textContent=''; renderHP();
+      btn.textContent='미친듯이 클릭'; rollGacha();
+      timerId=setInterval(()=>{
+        time--; timeEl.textContent=time;
+        if(time%6===0){ hp=Math.max(hp-1,0); renderHP(); }
+        if(time<=0 || hp<=0) endGame();
+      },1000);
+    }
+
+    function endGame(){ clearInterval(timerId); timerId=null; playing=false; showEnding(score); }
+
+    function resetForRetry(){ time=MAX_TIME; hp=MAX_HP; score=0; multiplier=1; ssrCount=0; rerollCount=0; timeEl.textContent=time; renderHP(); scoreEl.textContent=score; gachaText.textContent=''; btn.textContent='눌러!!!'; }
+
+    function rollGacha(isReroll=false){
+      const roll=Math.random();
+      if(roll<.6) multiplier=1; else if(roll<.85) multiplier=2; else if(roll<.95) multiplier=3; else multiplier=5;
+      gachaText.textContent=`${isReroll?'🔄 리롤 결과':'🎰 뽑기 결과'} : 점수 x${multiplier}`;
+      if(multiplier>=3){ gameEl.classList.add('shake'); setTimeout(()=>gameEl.classList.remove('shake'),300); }
+      if(multiplier===5) triggerSSR();
+    }
+
+    function triggerSSR(){ ssrCount++; gameEl.classList.add('ssr-glow'); const b=document.createElement('div'); b.className='ssr-banner'; b.textContent='SSR!!!'; gameEl.appendChild(b); setTimeout(()=>{ gameEl.classList.remove('ssr-glow'); b.remove(); },900); }
+
+    function showEnding(finalScore){
+      let title='엔딩: 초보 검지', desc='아직은 워밍업 단계.';
+      if(ssrCount>=2 && rerollCount>0){ title='히든 엔딩: 운명을 되돌린 자'; desc='SSR이 와도 리롤을 멈추지 않았다.'; }
+      else if(finalScore===0 && rerollCount>0){ title='히든 엔딩: 리롤 중독자'; desc='클릭은 안 했다. 도박만 했다.'; }
+      else if(finalScore>=300){ title='엔딩: 신의 검지'; desc='물리 법칙을 무시했다.'; }
+      else if(finalScore>=250){ title='엔딩: 인간 한계 돌파'; desc='손가락이 각성했다.'; }
+      else if(finalScore>=200){ title='엔딩: 검지 파괴자'; desc='오늘은 쉬세요.'; }
+      else if(finalScore>=150){ title='엔딩: 근육 기억 각성'; desc='클릭 리듬 마스터.'; }
+      else if(finalScore>=100){ title='엔딩: 중급 클릭러'; desc='속도가 눈에 띈다.'; }
+      else if(finalScore>=50){ title='엔딩: 클릭 중독의 문턱'; desc='이제 시작이다.'; }
+
+      endingTitle.textContent=title;
+      endingDesc.textContent=desc;
+      endingScore.textContent=finalScore;
+
+      const unlocked=endings.filter(e=>finalScore>=e).length + ((ssrCount>=2&&rerollCount>0)?1:0) + ((finalScore===0&&rerollCount>0)?1:0);
+      endingCollection.textContent=`엔딩 컬렉션 해금: ${Math.min(unlocked, endings.length+2)} / ${endings.length+2}`;
+      endingEl.classList.add('show');
+    }
+  </script>
+</body>
+</html>
